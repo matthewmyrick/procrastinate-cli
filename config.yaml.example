@@ -1,0 +1,30 @@
+# Procrastinate CLI Configuration
+# Copy to ~/.config/procrastinate-cli/config.yaml
+
+# How often to poll the database for updates
+poll_interval: 5s
+
+# How long a job must be stuck before it's considered orphaned
+orphan_threshold: 30m
+
+# Database connections (switch between these at runtime with 'C')
+# First connection is used by default. Override with --connection flag.
+# "name" is just a display label — call it whatever helps you identify it
+connections:
+  - name: "local-dev"
+    host: "localhost"
+    port: 5432
+    database: "myapp"
+    username: "postgres"
+    password: "secret"
+    sslmode: "disable"
+    default_queue: "default"
+
+  - name: "staging-readonly"
+    host: "staging-db.example.com"
+    port: 5432
+    database: "myapp"
+    username: "reader"
+    password: "readonly_pass"
+    sslmode: "prefer"
+    default_queue: "emails"
