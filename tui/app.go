@@ -53,7 +53,8 @@ type App struct {
 	ready         bool
 	lastError     error
 	toast         string
-	showDetail    bool // true = right pane shows job detail, false = dashboard tabs
+	showDetail    bool   // true = right pane shows job detail, false = dashboard tabs
+	fetchGen      uint64 // incremented on connection/queue change; stale results are ignored
 
 	// Child components
 	sidebar      Sidebar
@@ -175,6 +176,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case jobsLoadedMsg:
+		if msg.gen != a.fetchGen {
+			break // stale result from old connection/queue
+		}
 		if msg.err != nil {
 			a.lastError = msg.err
 		} else {
@@ -186,6 +190,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case statusCountsMsg:
+		if msg.gen != a.fetchGen {
+			break
+		}
 		if msg.err != nil {
 			a.lastError = msg.err
 		} else {
@@ -194,6 +201,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case recentJobsMsg:
+		if msg.gen != a.fetchGen {
+			break
+		}
 		if msg.err != nil {
 			a.lastError = msg.err
 		} else {
@@ -202,6 +212,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case orphanedJobsMsg:
+		if msg.gen != a.fetchGen {
+			break
+		}
 		if msg.err != nil {
 			a.lastError = msg.err
 		} else {
@@ -210,6 +223,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case queuesLoadedMsg:
+		if msg.gen != a.fetchGen {
+			break
+		}
 		if msg.err != nil {
 			a.lastError = msg.err
 		} else {
@@ -217,6 +233,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 	case jobDetailMsg:
+		if msg.gen != a.fetchGen {
+			break
+		}
 		if msg.err != nil {
 			a.lastError = msg.err
 		} else {
@@ -429,6 +448,7 @@ func (a *App) openQueuePicker() {
 	}
 	a.switchQueueFn = func(queue string) tea.Cmd {
 		a.currentQueue = queue
+		a.fetchGen++
 		if a.listener != nil {
 			_ = a.listener.SwitchQueue(context.Background(), queue)
 		}
@@ -474,6 +494,7 @@ func (a *App) openConnPicker() {
 		a.currentQueue = conn.DefaultQueue
 		a.connected = false
 		a.lastError = nil
+		a.fetchGen++
 		a.sidebar.SetJobs(nil)
 
 		return a.connectCmd(connName, conn.DefaultQueue)

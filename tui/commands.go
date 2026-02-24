@@ -9,61 +9,85 @@ import (
 )
 
 func (a *App) fetchJobs() tea.Cmd {
+	if a.dbClient == nil {
+		return nil
+	}
 	pool := a.dbClient.Pool()
 	queue := a.currentQueue
+	gen := a.fetchGen
 	filter := a.sidebar.CurrentFilter()
 	return func() tea.Msg {
 		jobs, err := db.ListJobsFiltered(context.Background(), pool, queue, filter, 100, 0)
-		return jobsLoadedMsg{jobs: jobs, err: err}
+		return jobsLoadedMsg{jobs: jobs, err: err, gen: gen}
 	}
 }
 
 func (a *App) fetchStatusCounts() tea.Cmd {
+	if a.dbClient == nil {
+		return nil
+	}
 	pool := a.dbClient.Pool()
 	queue := a.currentQueue
+	gen := a.fetchGen
 	return func() tea.Msg {
 		counts, err := db.CountJobsByStatus(context.Background(), pool, queue)
-		return statusCountsMsg{counts: counts, err: err}
+		return statusCountsMsg{counts: counts, err: err, gen: gen}
 	}
 }
 
 func (a *App) fetchOrphanedJobs() tea.Cmd {
+	if a.dbClient == nil {
+		return nil
+	}
 	pool := a.dbClient.Pool()
 	queue := a.currentQueue
+	gen := a.fetchGen
 	threshold := a.config.OrphanThreshold
 	return func() tea.Msg {
 		jobs, err := db.ListOrphanedJobs(context.Background(), pool, queue, threshold)
-		return orphanedJobsMsg{jobs: jobs, err: err}
+		return orphanedJobsMsg{jobs: jobs, err: err, gen: gen}
 	}
 }
 
 func (a *App) fetchRecentJobs() tea.Cmd {
+	if a.dbClient == nil {
+		return nil
+	}
 	pool := a.dbClient.Pool()
 	queue := a.currentQueue
+	gen := a.fetchGen
 	return func() tea.Msg {
 		since := time.Now().Add(-1 * time.Hour)
 		jobs, err := db.ListRecentJobs(context.Background(), pool, queue, since)
-		return recentJobsMsg{jobs: jobs, err: err}
+		return recentJobsMsg{jobs: jobs, err: err, gen: gen}
 	}
 }
 
 func (a *App) fetchQueues() tea.Cmd {
+	if a.dbClient == nil {
+		return nil
+	}
 	pool := a.dbClient.Pool()
+	gen := a.fetchGen
 	return func() tea.Msg {
 		queues, err := db.ListQueues(context.Background(), pool)
-		return queuesLoadedMsg{queues: queues, err: err}
+		return queuesLoadedMsg{queues: queues, err: err, gen: gen}
 	}
 }
 
 func (a *App) fetchJobDetail(id int64) tea.Cmd {
+	if a.dbClient == nil {
+		return nil
+	}
 	pool := a.dbClient.Pool()
+	gen := a.fetchGen
 	return func() tea.Msg {
 		job, err := db.GetJob(context.Background(), pool, id)
 		if err != nil {
-			return jobDetailMsg{err: err}
+			return jobDetailMsg{err: err, gen: gen}
 		}
 		events, err := db.GetJobEvents(context.Background(), pool, id)
-		return jobDetailMsg{job: job, events: events, err: err}
+		return jobDetailMsg{job: job, events: events, err: err, gen: gen}
 	}
 }
 
