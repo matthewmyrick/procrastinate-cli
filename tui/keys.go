@@ -4,17 +4,22 @@ import "github.com/charmbracelet/bubbles/key"
 
 // KeyMap defines all key bindings for the application.
 type KeyMap struct {
-	Quit        key.Binding
-	TabNext     key.Binding
-	TabPrev     key.Binding
-	FocusNext   key.Binding
-	FocusPrev   key.Binding
-	Up          key.Binding
-	Down        key.Binding
-	Enter       key.Binding
-	Back        key.Binding
-	SwitchQueue key.Binding
-	SwitchConn  key.Binding
+	Quit         key.Binding
+	TabNext      key.Binding
+	TabPrev      key.Binding
+	FocusNext    key.Binding
+	FocusPrev    key.Binding
+	FocusLeft    key.Binding
+	FocusRight   key.Binding
+	Up           key.Binding
+	Down         key.Binding
+	Enter        key.Binding
+	Back         key.Binding
+	SwitchQueue  key.Binding
+	SwitchConn   key.Binding
+	FilterStatus key.Binding
+	Dashboard    key.Binding
+	Help         key.Binding
 }
 
 // DefaultKeyMap returns the default key bindings.
@@ -40,6 +45,14 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("shift+tab"),
 			key.WithHelp("shift+tab", "switch pane"),
 		),
+		FocusLeft: key.NewBinding(
+			key.WithKeys("ctrl+g"),
+			key.WithHelp("ctrl+g", "left pane"),
+		),
+		FocusRight: key.NewBinding(
+			key.WithKeys("ctrl+h"),
+			key.WithHelp("ctrl+h", "right pane"),
+		),
 		Up: key.NewBinding(
 			key.WithKeys("up", "k"),
 			key.WithHelp("k", "up"),
@@ -64,13 +77,35 @@ func DefaultKeyMap() KeyMap {
 			key.WithKeys("C"),
 			key.WithHelp("C", "switch conn"),
 		),
+		FilterStatus: key.NewBinding(
+			key.WithKeys("f", "F"),
+			key.WithHelp("f", "filter"),
+		),
+		Dashboard: key.NewBinding(
+			key.WithKeys("D"),
+			key.WithHelp("D", "dashboard"),
+		),
+		Help: key.NewBinding(
+			key.WithKeys("?"),
+			key.WithHelp("?", "help"),
+		),
 	}
 }
 
-// HelpKeys returns key bindings formatted for the help bar.
+// HelpKeys returns a short set of key bindings for the bottom help bar.
 func (k KeyMap) HelpKeys() []key.Binding {
 	return []key.Binding{
-		k.Quit, k.FocusNext, k.TabNext, k.TabPrev,
-		k.Enter, k.Back, k.SwitchQueue, k.SwitchConn,
+		k.Help, k.Quit, k.Enter, k.Dashboard, k.FilterStatus, k.SwitchConn,
+	}
+}
+
+// AllKeys returns all key bindings for the full help overlay.
+func (k KeyMap) AllKeys() []key.Binding {
+	return []key.Binding{
+		k.Quit, k.Help,
+		k.FocusNext, k.FocusPrev, k.FocusLeft, k.FocusRight,
+		k.Up, k.Down, k.Enter, k.Back,
+		k.TabNext, k.TabPrev, k.Dashboard,
+		k.FilterStatus, k.SwitchQueue, k.SwitchConn,
 	}
 }

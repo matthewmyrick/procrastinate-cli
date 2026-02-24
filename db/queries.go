@@ -45,6 +45,46 @@ func ListJobs(ctx context.Context, pool *pgxpool.Pool, queue string, limit, offs
 	return scanJobs(rows)
 }
 
+// ListJobsFiltered returns jobs for a queue with an optional status filter.
+// When status is empty, returns all jobs with doing first, todo second, then everything else by time (newest first).
+// When status is set, returns only jobs with that status sorted by id DESC.
+func ListJobsFiltered(ctx context.Context, pool *pgxpool.Pool, queue, status string, limit, offset int) ([]Job, error) {
+	var query string
+	var args []any
+
+	if status == "" {
+		query = `
+		SELECT id, queue_name, task_name, priority, lock, queueing_lock,
+		       args, status, scheduled_at, attempts, abort_requested, worker_id
+		FROM procrastinate_jobs
+		WHERE queue_name = $1
+		ORDER BY CASE status
+			WHEN 'doing' THEN 0
+			WHEN 'todo' THEN 1
+			ELSE 2
+		END, id DESC
+		LIMIT $2 OFFSET $3`
+		args = []any{queue, limit, offset}
+	} else {
+		query = `
+		SELECT id, queue_name, task_name, priority, lock, queueing_lock,
+		       args, status, scheduled_at, attempts, abort_requested, worker_id
+		FROM procrastinate_jobs
+		WHERE queue_name = $1 AND status = $2
+		ORDER BY id DESC
+		LIMIT $3 OFFSET $4`
+		args = []any{queue, status, limit, offset}
+	}
+
+	rows, err := pool.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	return scanJobs(rows)
+}
+
 // GetJob returns a single job by ID.
 func GetJob(ctx context.Context, pool *pgxpool.Pool, id int64) (*Job, error) {
 	row := pool.QueryRow(ctx, `

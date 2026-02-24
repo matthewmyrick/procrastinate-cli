@@ -11,7 +11,7 @@ import (
 	"github.com/matthewmyrick/procrastinate-cli/db"
 )
 
-// DetailView shows full details for a selected job as an overlay.
+// DetailView shows full details for a selected job.
 type DetailView struct {
 	job      *db.Job
 	events   []db.JobEvent
@@ -35,46 +35,20 @@ func (d *DetailView) SetJob(job *db.Job, events []db.JobEvent) {
 	d.viewport.GotoTop()
 }
 
-// SetVisible controls whether the overlay is shown.
+// SetVisible controls whether the view is active.
 func (d *DetailView) SetVisible(v bool) {
 	d.visible = v
 }
 
-// IsVisible returns whether the overlay is showing.
-func (d *DetailView) IsVisible() bool {
-	return d.visible
-}
-
-// SetSize updates the overlay dimensions.
+// SetSize updates the viewport dimensions for inline rendering.
 func (d *DetailView) SetSize(width, height int) {
 	d.width = width
 	d.height = height
-	vw, vh := d.overlayDimensions()
-	frameW := OverlayStyle.GetHorizontalFrameSize()
-	frameH := OverlayStyle.GetVerticalFrameSize()
-	d.viewport.Width = vw - frameW
-	d.viewport.Height = vh - frameH - 1 // -1 for footer
+	d.viewport.Width = width
+	d.viewport.Height = height - 1 // -1 for footer line
 	if d.job != nil {
 		d.viewport.SetContent(d.renderContent())
 	}
-}
-
-func (d *DetailView) overlayDimensions() (int, int) {
-	vw := d.width * 80 / 100
-	vh := d.height * 80 / 100
-	if vw < 60 {
-		vw = 60
-	}
-	if vw > d.width-4 {
-		vw = d.width - 4
-	}
-	if vh < 15 {
-		vh = 15
-	}
-	if vh > d.height-4 {
-		vh = d.height - 4
-	}
-	return vw, vh
 }
 
 // Update handles messages for the detail view.
@@ -87,26 +61,19 @@ func (d DetailView) Update(msg tea.Msg) (DetailView, tea.Cmd) {
 	return d, cmd
 }
 
-// View renders the detail overlay.
-func (d DetailView) View() string {
-	if !d.visible || d.job == nil {
+// ViewInline renders the detail view for the right pane (not overlay).
+func (d DetailView) ViewInline(width, height int) string {
+	if d.job == nil {
 		return ""
 	}
-
-	vw, vh := d.overlayDimensions()
 
 	content := d.viewport.View()
 
 	footer := lipgloss.NewStyle().
 		Foreground(ColorMuted).
-		Render(fmt.Sprintf("  ↑↓ scroll · esc close  (%.0f%%)", d.viewport.ScrollPercent()*100))
+		Render(fmt.Sprintf("  ↑↓ scroll · esc/D back  (%.0f%%)", d.viewport.ScrollPercent()*100))
 
-	inner := lipgloss.JoinVertical(lipgloss.Left, content, footer)
-
-	return OverlayStyle.
-		Width(vw).
-		Height(vh).
-		Render(inner)
+	return lipgloss.JoinVertical(lipgloss.Left, content, footer)
 }
 
 func (d *DetailView) renderContent() string {

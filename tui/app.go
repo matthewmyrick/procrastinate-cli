@@ -28,9 +28,10 @@ type overlayMode int
 
 const (
 	overlayNone overlayMode = iota
-	overlayDetail
 	overlayQueuePicker
 	overlayConnPicker
+	overlayFilterPicker
+	overlayHelp
 )
 
 // App is the root Bubble Tea model.
@@ -52,6 +53,7 @@ type App struct {
 	ready         bool
 	lastError     error
 	toast         string
+	showDetail    bool // true = right pane shows job detail, false = dashboard tabs
 
 	// Child components
 	sidebar      Sidebar
@@ -176,8 +178,11 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			a.lastError = msg.err
 		} else {
-			a.sidebar.SetJobs(msg.jobs)
+			cmd := a.sidebar.SetJobs(msg.jobs)
 			a.lastError = nil
+			if cmd != nil {
+				cmds = append(cmds, cmd)
+			}
 		}
 
 	case statusCountsMsg:
@@ -216,8 +221,9 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			a.lastError = msg.err
 		} else {
 			a.detailView.SetJob(msg.job, msg.events)
-			a.detailView.SetSize(a.width, a.height)
-			a.overlay = overlayDetail
+			a.showDetail = true
+			a.focus = focusDetail
+			a.sidebar.SetFocused(false)
 		}
 
 	case notificationMsg:
@@ -229,6 +235,14 @@ func (a *App) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	}
 
+	// Pass unhandled messages to child components so they receive their own
+	// internal messages (e.g., the bubbles list's FilterMatchesMsg).
+	var sidebarCmd tea.Cmd
+	a.sidebar, sidebarCmd = a.sidebar.Update(msg)
+	if sidebarCmd != nil {
+		cmds = append(cmds, sidebarCmd)
+	}
+
 	return a, tea.Batch(cmds...)
 }
 
@@ -237,12 +251,38 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return a.handleOverlayKey(msg)
 	}
 
+	// When the sidebar list is in filtering mode (user is typing a search),
+	// pass ALL keys to the sidebar so they go to the filter input.
+	// Only ctrl+c is allowed to quit.
+	if a.focus == focusSidebar && a.sidebar.IsFiltering() {
+		if msg.String() == "ctrl+c" {
+			return a, tea.Quit
+		}
+		var cmd tea.Cmd
+		a.sidebar, cmd = a.sidebar.Update(msg)
+		return a, cmd
+	}
+
 	switch {
 	case key.Matches(msg, a.keys.Quit):
 		return a, tea.Quit
 
+	case key.Matches(msg, a.keys.Help):
+		a.overlay = overlayHelp
+		return a, nil
+
 	case key.Matches(msg, a.keys.FocusNext), key.Matches(msg, a.keys.FocusPrev):
 		a.toggleFocus()
+		return a, nil
+
+	case key.Matches(msg, a.keys.FocusLeft):
+		a.focus = focusSidebar
+		a.sidebar.SetFocused(true)
+		return a, nil
+
+	case key.Matches(msg, a.keys.FocusRight):
+		a.focus = focusDetail
+		a.sidebar.SetFocused(false)
 		return a, nil
 
 	case key.Matches(msg, a.keys.TabNext):
@@ -274,6 +314,26 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case key.Matches(msg, a.keys.SwitchConn):
 		a.openConnPicker()
 		return a, nil
+
+	case key.Matches(msg, a.keys.FilterStatus):
+		a.openFilterPicker()
+		return a, nil
+
+	case key.Matches(msg, a.keys.Dashboard):
+		if a.showDetail {
+			a.showDetail = false
+			a.focus = focusSidebar
+			a.sidebar.SetFocused(true)
+		}
+		return a, nil
+
+	case key.Matches(msg, a.keys.Back):
+		if a.showDetail {
+			a.showDetail = false
+			a.focus = focusSidebar
+			a.sidebar.SetFocused(true)
+			return a, nil
+		}
 	}
 
 	if a.focus == focusSidebar {
@@ -288,17 +348,12 @@ func (a *App) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (a *App) handleOverlayKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch a.overlay {
-	case overlayDetail:
-		if key.Matches(msg, a.keys.Back) {
-			a.overlay = overlayNone
-			a.detailView.SetVisible(false)
-			return a, nil
-		}
-		var cmd tea.Cmd
-		a.detailView, cmd = a.detailView.Update(msg)
-		return a, cmd
+	case overlayHelp:
+		// Any key dismisses the help overlay
+		a.overlay = overlayNone
+		return a, nil
 
-	case overlayQueuePicker, overlayConnPicker:
+	case overlayQueuePicker, overlayConnPicker, overlayFilterPicker:
 		return a.handlePickerKey(msg)
 	}
 
@@ -330,7 +385,16 @@ func (a *App) handlePickerKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return a, nil
 		}
 		selected := a.pickerItems[a.pickerIndex]
+		currentOverlay := a.overlay
 		a.overlay = overlayNone
+
+		if currentOverlay == overlayFilterPicker {
+			a.sidebar.filterIndex = a.pickerIndex
+			if a.connected {
+				return a, a.fetchJobs()
+			}
+			return a, nil
+		}
 
 		if a.switchQueueFn != nil {
 			cmd := a.switchQueueFn(selected)
@@ -416,8 +480,21 @@ func (a *App) openConnPicker() {
 	}
 }
 
+func (a *App) openFilterPicker() {
+	a.overlay = overlayFilterPicker
+	a.pickerItems = filterLabels
+	a.pickerIndex = a.sidebar.filterIndex
+}
+
 func (a *App) updateActiveView(msg tea.Msg) []tea.Cmd {
 	var cmds []tea.Cmd
+
+	if a.showDetail {
+		var cmd tea.Cmd
+		a.detailView, cmd = a.detailView.Update(msg)
+		return []tea.Cmd{cmd}
+	}
+
 	switch a.tabBar.Active() {
 	case TabStatus:
 		var cmd tea.Cmd
@@ -463,12 +540,14 @@ func (a *App) View() string {
 	base := lipgloss.JoinVertical(lipgloss.Left, topBar, content, helpBar)
 
 	switch a.overlay {
-	case overlayDetail:
-		return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, a.detailView.View())
 	case overlayQueuePicker:
-		return a.renderOverlay(base, a.renderPicker("Switch Queue", a.pickerItems, a.pickerIndex))
+		return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, a.renderPicker("Switch Queue", a.pickerItems, a.pickerIndex))
 	case overlayConnPicker:
-		return a.renderOverlay(base, a.renderPicker("Switch Connection", a.pickerItems, a.pickerIndex))
+		return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, a.renderPicker("Switch Connection", a.pickerItems, a.pickerIndex))
+	case overlayFilterPicker:
+		return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, a.renderPicker("Filter by Status", a.pickerItems, a.pickerIndex))
+	case overlayHelp:
+		return lipgloss.Place(a.width, a.height, lipgloss.Center, lipgloss.Center, a.renderHelpOverlay())
 	}
 
 	if a.toast != "" {
@@ -497,7 +576,7 @@ func (a *App) recalcLayout() {
 	a.statusView.SetSize(tabContentWidth, tabContentHeight)
 	a.liveView.SetSize(tabContentWidth, tabContentHeight)
 	a.orphanedView.SetSize(tabContentWidth, tabContentHeight)
-	a.detailView.SetSize(a.width, a.height)
+	a.detailView.SetSize(tabContentWidth, tabContentHeight)
 }
 
 func (a *App) calcSidebarWidth() int {

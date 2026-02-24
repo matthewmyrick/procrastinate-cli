@@ -11,6 +11,11 @@ import (
 	"github.com/matthewmyrick/procrastinate-cli/db"
 )
 
+var (
+	filterOptions = []string{"", "doing", "todo", "succeeded", "failed", "cancelled"}
+	filterLabels  = []string{"All", "Doing", "Todo", "Succeeded", "Failed", "Cancelled"}
+)
+
 // jobItem wraps a db.Job to implement list.Item.
 type jobItem struct {
 	job db.Job
@@ -62,11 +67,12 @@ func (d jobItemDelegate) Render(w io.Writer, m list.Model, index int, item list.
 
 // Sidebar is the left-pane job list.
 type Sidebar struct {
-	list    list.Model
-	jobs    []db.Job
-	focused bool
-	width   int
-	height  int
+	list        list.Model
+	jobs        []db.Job
+	focused     bool
+	width       int
+	height      int
+	filterIndex int // index into filterOptions
 }
 
 // NewSidebar creates a new sidebar with the given dimensions.
@@ -87,13 +93,14 @@ func NewSidebar(width, height int) Sidebar {
 }
 
 // SetJobs updates the sidebar with new job data.
-func (s *Sidebar) SetJobs(jobs []db.Job) {
+// Returns a tea.Cmd that must be executed (re-filters items if a filter is active).
+func (s *Sidebar) SetJobs(jobs []db.Job) tea.Cmd {
 	s.jobs = jobs
 	items := make([]list.Item, len(jobs))
 	for i, j := range jobs {
 		items[i] = jobItem{job: j}
 	}
-	s.list.SetItems(items)
+	return s.list.SetItems(items)
 }
 
 // SelectedJob returns the currently highlighted job, or nil if none.
@@ -106,11 +113,16 @@ func (s *Sidebar) SelectedJob() *db.Job {
 	return &ji.job
 }
 
+// CurrentFilter returns the current status filter value (empty string = All).
+func (s *Sidebar) CurrentFilter() string {
+	return filterOptions[s.filterIndex]
+}
+
 // SetSize updates the sidebar dimensions.
 func (s *Sidebar) SetSize(width, height int) {
 	s.width = width
 	s.height = height
-	s.list.SetSize(width-2, height-3)
+	s.list.SetSize(width-2, height-4) // header + filter label
 }
 
 // SetFocused sets whether the sidebar has focus.
@@ -118,10 +130,19 @@ func (s *Sidebar) SetFocused(f bool) {
 	s.focused = f
 }
 
+// IsFiltering returns true when the user is actively typing in the filter input.
+func (s *Sidebar) IsFiltering() bool {
+	return s.list.SettingFilter()
+}
+
 // Update handles messages for the sidebar.
 func (s Sidebar) Update(msg tea.Msg) (Sidebar, tea.Cmd) {
+	// Block key input when unfocused, but always allow non-key messages
+	// (e.g., the list's internal FilterMatchesMsg) to pass through.
 	if !s.focused {
-		return s, nil
+		if _, isKey := msg.(tea.KeyMsg); isKey {
+			return s, nil
+		}
 	}
 	var cmd tea.Cmd
 	s.list, cmd = s.list.Update(msg)
@@ -137,9 +158,12 @@ func (s Sidebar) View() string {
 
 	title := TitleStyle.Render(" Jobs ")
 	count := lipgloss.NewStyle().Foreground(ColorMuted).Render(
-		fmt.Sprintf(" (%d)", len(s.jobs)),
+		fmt.Sprintf("(%d)", len(s.jobs)),
 	)
-	header := title + count
+	filterLabel := lipgloss.NewStyle().Foreground(ColorWarning).Bold(true).Render(
+		filterLabels[s.filterIndex],
+	)
+	header := title + count + " " + filterLabel
 
 	content := s.list.View()
 	if len(s.jobs) == 0 {

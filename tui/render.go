@@ -35,7 +35,15 @@ func (a *App) renderDetail(width, height int) string {
 		return style.Width(width).Height(height).Render(centered)
 	}
 
-	// Connected — show tab bar + content
+	// Job detail mode — show detail in the right pane
+	if a.showDetail {
+		content := a.detailView.ViewInline(width, height)
+		return style.Width(width).Height(height).Render(
+			padOrTruncate(content, width, height),
+		)
+	}
+
+	// Dashboard mode — show tab bar + content
 	tabBar := a.tabBar.View()
 
 	var tabContent string
@@ -62,35 +70,9 @@ func (a *App) renderDetail(width, height int) string {
 
 func (a *App) renderToastOverlay(base string) string {
 	rendered := ToastStyle.Render(a.toast)
-	w := lipgloss.Width(rendered)
-
-	x := a.width - w - 2
-	if x < 0 {
-		x = 0
-	}
-	y := 1 // just below the top bar
-
-	return placeOverlay(x, y, rendered, base)
-}
-
-func (a *App) renderOverlay(base, overlay string) string {
-	if overlay == "" {
-		return base
-	}
-
-	overlayWidth := lipgloss.Width(overlay)
-	overlayHeight := lipgloss.Height(overlay)
-
-	x := (a.width - overlayWidth) / 2
-	y := (a.height - overlayHeight) / 2
-	if x < 0 {
-		x = 0
-	}
-	if y < 0 {
-		y = 0
-	}
-
-	return placeOverlay(x, y, overlay, base)
+	return lipgloss.Place(a.width, a.height, lipgloss.Right, lipgloss.Top, rendered,
+		lipgloss.WithWhitespaceChars(" "),
+	)
 }
 
 func (a *App) renderPicker(title string, items []string, selected int) string {
@@ -130,42 +112,27 @@ func (a *App) renderHelpBar() string {
 	return HelpStyle.Width(a.width).MaxHeight(1).Render(help)
 }
 
-// placeOverlay places an overlay string on top of a background string at x, y.
-func placeOverlay(x, y int, overlay, background string) string {
-	bgLines := strings.Split(background, "\n")
-	olLines := strings.Split(overlay, "\n")
+func (a *App) renderHelpOverlay() string {
+	var b strings.Builder
 
-	for i, olLine := range olLines {
-		bgY := y + i
-		if bgY >= len(bgLines) {
-			break
-		}
+	b.WriteString(TitleStyle.Render("Keyboard Shortcuts"))
+	b.WriteString("\n\n")
 
-		bgLine := bgLines[bgY]
-		bgRunes := []rune(bgLine)
-		olRunes := []rune(olLine)
+	keyStyle := lipgloss.NewStyle().Bold(true).Foreground(ColorWhite).Width(14)
+	descStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#DDDDDD"))
 
-		var newLine []rune
-		if x > 0 {
-			if x <= len(bgRunes) {
-				newLine = append(newLine, bgRunes[:x]...)
-			} else {
-				newLine = append(newLine, bgRunes...)
-				for len(newLine) < x {
-					newLine = append(newLine, ' ')
-				}
-			}
-		}
-
-		newLine = append(newLine, olRunes...)
-
-		endX := x + len(olRunes)
-		if endX < len(bgRunes) {
-			newLine = append(newLine, bgRunes[endX:]...)
-		}
-
-		bgLines[bgY] = string(newLine)
+	for _, k := range a.keys.AllKeys() {
+		h := k.Help()
+		b.WriteString(fmt.Sprintf("  %s %s\n", keyStyle.Render(h.Key), descStyle.Render(h.Desc)))
 	}
 
-	return strings.Join(bgLines, "\n")
+	b.WriteString("\n")
+	b.WriteString(lipgloss.NewStyle().Foreground(ColorMuted).Render("  Press any key to close"))
+
+	width := 40
+	if width > a.width-10 {
+		width = a.width - 10
+	}
+
+	return OverlayStyle.Width(width).Render(b.String())
 }

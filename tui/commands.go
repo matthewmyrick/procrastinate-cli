@@ -11,8 +11,9 @@ import (
 func (a *App) fetchJobs() tea.Cmd {
 	pool := a.dbClient.Pool()
 	queue := a.currentQueue
+	filter := a.sidebar.CurrentFilter()
 	return func() tea.Msg {
-		jobs, err := db.ListJobs(context.Background(), pool, queue, 100, 0)
+		jobs, err := db.ListJobsFiltered(context.Background(), pool, queue, filter, 100, 0)
 		return jobsLoadedMsg{jobs: jobs, err: err}
 	}
 }
